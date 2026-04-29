@@ -1,81 +1,18 @@
 # Minimal TDX Image
 
-This directory builds a small payload-runner initramfs for QEMU TDX tests.
-After minimal setup, `/init` replaces itself with the selected payload, so the
-payload runs as process ID 1 (PID 1).
+This is a small learning and benchmarking project for Intel TDX based on
+[dstack](https://github.com/Dstack-TEE/dstack) and
+[meta-dstack](https://github.com/Dstack-TEE/meta-dstack).
 
-## Files
+The project reuses the TDX-capable OVMF and Linux kernel published by
+`meta-dstack` releases, then replaces the dstack guest rootfs with a tiny
+initramfs that runs one selected payload as PID 1. This keeps the experiment
+focused on the TDX/QEMU boot path and guest payload behavior without pulling in
+the full dstack userspace stack.
 
-```text
-build-base.sh                 download TDX OVMF and kernel from dstack release
-build-image.sh                build a runnable image bundle
-build-initramfs.sh             build a payload initramfs
-run-qemu.sh                   boot the initramfs as a TDX guest
-examples/hello.sh             minimal PID 1 payload
-examples/quote-generator.sh   quote-generator payload example
-```
+## What This Builds
 
-## Base Artifacts
-
-`build-base.sh` downloads the latest dstack release tarball from:
-
-```text
-https://github.com/dstack-TEE/meta-dstack.git
-```
-
-By default it resolves GitHub `latest` and downloads `dstack-<version>.tar.gz`.
-Set `DSTACK_RELEASE_TAG` to pin a release tag:
-
-```bash
-cd minimal-tdx-image
-DSTACK_RELEASE_TAG=v0.5.9 ./build-base.sh
-```
-
-Set `DSTACK_DIST` to download another published flavor, for example
-`dstack-dev`, `dstack-nvidia`, or `dstack-nvidia-dev`.
-
-The output is:
-
-```text
-base/
-  ovmf.fd
-  bzImage
-  manifest.txt
-```
-
-`manifest.txt` records the resolved release tag and source artifact paths.
-Downloaded release archives are cached under `.downloads/`, and extracted
-archives live under `.work/`.
-
-## Payload Contract
-
-`build-initramfs.sh` installs the selected payload as `/payload/init`. The
-generated `/init` mounts basic filesystems, optionally mounts a QEMU 9p output
-share at `/mnt/out`, exports `OUT_DIR`, and then runs:
-
-```sh
-exec /payload/init
-```
-
-After the payload becomes PID 1, it should shut the guest down when it finishes:
-
-```sh
-sync
-poweroff -f 2>/dev/null || reboot -f 2>/dev/null || exit 0
-```
-
-## Build A Minimal Image
-
-```bash
-cd minimal-tdx-image
-PAYLOAD_BIN=examples/hello.sh ./build-image.sh
-```
-
-If `base/ovmf.fd` or `base/bzImage` is missing, `build-image.sh` runs
-`build-base.sh` first. For normal payload iteration, keep `base/` and rerun only
-`build-image.sh`.
-
-The output is:
+The output image bundle contains:
 
 ```text
 out/image/
@@ -85,15 +22,92 @@ out/image/
   manifest.txt
 ```
 
-`EXTRA_FILES` can add files to the initramfs. Each item can use
-`src:/guest/path` or `src`. The `src` form installs the file to
-`/extra/<basename>`:
+`ovmf.fd` and `bzImage` come from the latest
+[meta-dstack release](https://github.com/Dstack-TEE/meta-dstack/releases/latest).
+`initramfs.cpio.gz` is built locally from a selected payload.
+
+This repository does not build dstack itself. It consumes dstack release
+artifacts so the local test loop stays small.
+
+## Files
+
+```text
+build-base.sh                 download OVMF and kernel from a dstack release
+build-image.sh                assemble a runnable TDX image bundle
+build-initramfs.sh             build the payload initramfs
+run-qemu.sh                   boot the image bundle with QEMU TDX
+examples/hello.sh             minimal payload example
+examples/quote-generator.sh   quote-generator payload example
+```
+
+## Build Base Artifacts
+
+Download the latest dstack release artifacts:
+
+```bash
+./build-base.sh
+```
+
+By default this resolves GitHub `latest` and downloads:
+
+```text
+dstack-<version>.tar.gz
+```
+
+Pin a release when you need reproducible comparisons:
+
+```bash
+DSTACK_RELEASE_TAG=v0.5.9 ./build-base.sh
+```
+
+Use another published dstack flavor if needed:
+
+```bash
+DSTACK_DIST=dstack-dev ./build-base.sh
+```
+
+The base output is:
+
+```text
+base/
+  ovmf.fd
+  bzImage
+  metadata.json
+  manifest.txt
+```
+
+Archives are cached under `.downloads/`, and extracted release contents live
+under `.work/`.
+
+## Build A Payload Image
+
+The initramfs builder installs the selected payload as `/payload/init`. The
+generated `/init` mounts basic filesystems, exports `OUT_DIR`, optionally mounts
+the QEMU output share at `/mnt/out`, and then runs:
+
+```sh
+exec /payload/init
+```
+
+Build the hello payload:
+
+```bash
+PAYLOAD_BIN=examples/hello.sh ./build-image.sh
+```
+
+If `base/ovmf.fd` or `base/bzImage` is missing, `build-image.sh` runs
+`build-base.sh` first.
+
+Add extra files to the initramfs with `EXTRA_FILES`:
 
 ```bash
 PAYLOAD_BIN=./my-payload \
 EXTRA_FILES="/host/tool:/payload/tool /host/config.json:/etc/config.json" \
 ./build-image.sh
 ```
+
+Each item can be `src:/guest/path` or `src`. The `src` form installs to
+`/extra/<basename>`.
 
 ## Run QEMU TDX
 
@@ -103,18 +117,32 @@ VM_MEMORY=512M \
 ./run-qemu.sh
 ```
 
-`run-qemu.sh` defaults to `IMAGE_DIR=out/image`. You can set `IMAGE_DIR` to run
-another image bundle with the same file names.
-
-The guest mounts the output share at `/mnt/out`. Host output appears in:
+The guest writes shared output to:
 
 ```text
 runs/<timestamp>/out/
 ```
 
+Boot timing markers are written to:
+
+```text
+runs/<timestamp>/profile.log
+runs/<timestamp>/serial.log
+```
+
+To compare QEMU versions, keep the image and VM parameters fixed and change only
+`QEMU_BIN`:
+
+```bash
+QEMU_BIN=/path/to/qemu-system-x86_64 ./run-qemu.sh
+```
+
 ## Quote Generator Example
 
-The quote generator lives in its own public repository:
+TDX quote generation is provided by the separate
+[quote-generator](https://github.com/Leechael/quote-generator) repository.
+
+Build the TDX quote generator:
 
 ```bash
 git clone https://github.com/Leechael/quote-generator.git
@@ -122,7 +150,7 @@ cd quote-generator/tdx
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o tdx-quote-generator-linux .
 ```
 
-Build an initramfs that runs the quote generator payload:
+Build an initramfs that runs it:
 
 ```bash
 cd minimal-tdx-image
@@ -131,15 +159,7 @@ EXTRA_FILES="/path/to/quote-generator/tdx/tdx-quote-generator-linux:/payload/tdx
 ./build-image.sh
 ```
 
-If your guest kernel needs `tdx-guest.ko` as a module instead of providing
-`/dev/tdx_guest` directly, include it explicitly:
-
-```bash
-EXTRA_FILES="/path/to/quote-generator/tdx/tdx-quote-generator-linux:/payload/tdx-quote-generator-linux \
-/path/to/tdx-guest.ko:/lib/modules/tdx-guest.ko"
-```
-
-Run with the Quote Generation Service (QGS) enabled:
+Run with QGS enabled:
 
 ```bash
 ENABLE_QGS=1 \
@@ -167,17 +187,12 @@ dstack device-id report data:
 KERNEL_APPEND="device_id_report_data=1" ENABLE_QGS=1 ./run-qemu.sh
 ```
 
-## Benchmarking QEMU Versions
+## Relationship To dstack
 
-Keep `IMAGE_DIR`, `VM_MEMORY`, and `VM_CPUS` fixed, then vary only `QEMU_BIN`:
+[dstack](https://github.com/Dstack-TEE/dstack) is the real guest stack.
+[meta-dstack](https://github.com/Dstack-TEE/meta-dstack) builds and publishes
+the TDX boot artifacts used here.
 
-```bash
-QEMU_BIN=/path/to/qemu-system-x86_64 ./run-qemu.sh
-```
-
-Profile markers go to:
-
-```text
-runs/<timestamp>/profile.log
-runs/<timestamp>/serial.log
-```
+This project is intentionally smaller. It is for studying the TDX guest boot
+path, QEMU behavior, and quote-generation payloads with fewer moving parts than
+a full dstack guest image.
