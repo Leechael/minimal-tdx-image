@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: main
           fetch-depth: 0
 
       - name: Validate scripts
@@ -50,6 +50,8 @@ jobs:
       - name: Build git archive asset
         run: |
           source release-naming.env
+          git fetch --force --tags
+          git rev-parse --verify "$RELEASE_TAG"
           mkdir -p dist
           artifact="dist/${PROJECT_NAME}-${RELEASE_TAG}.tar.gz"
           git archive --format=tar.gz --prefix="${PROJECT_NAME}-${RELEASE_TAG}/" -o "$artifact" "$RELEASE_TAG"
