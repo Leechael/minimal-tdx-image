@@ -140,11 +140,14 @@ Boot timing markers are written to:
 ```text
 runs/<timestamp>/profile.log
 runs/<timestamp>/serial.log
+runs/<timestamp>/host-info.log
 ```
 
 `profile.log` includes host-side QEMU timing markers such as
 `first_serial_byte`, `linux_version`, `guest_init_begin`, and
-`guest_payload_exec`.
+`guest_payload_exec`. `host-info.log` records host kernel, OS, CPU flags,
+`kvm_intel` TDX parameters, QGS status/version, related package versions, and
+the dstack release metadata used by the image when available.
 
 To compare QEMU versions, keep the image and VM parameters fixed and change only
 `QEMU_BIN`:
@@ -210,6 +213,7 @@ runs/<timestamp>/out/quote.bin
 runs/<timestamp>/out/quote-generator.log
 runs/<timestamp>/profile.log
 runs/<timestamp>/serial.log
+runs/<timestamp>/host-info.log
 ```
 
 The quote example adds extra timing markers to `profile.log`:
@@ -289,6 +293,7 @@ The output files are:
 ```text
 runs/<timestamp>/profile.log
 runs/<timestamp>/serial.log
+runs/<timestamp>/host-info.log
 runs/<timestamp>/out/memory-fill.log
 ```
 

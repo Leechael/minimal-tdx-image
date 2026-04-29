@@ -41,6 +41,89 @@ require_file() {
   [ -f "$1" ] || die "missing file: $1"
 }
 
+one_line() {
+  tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//'
+}
+
+cmd_output() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  "$@" 2>/dev/null | one_line || true
+}
+
+file_value() {
+  if [ -r "$1" ]; then
+    one_line < "$1"
+  else
+    printf 'unavailable'
+  fi
+}
+
+host_info() {
+  local key=$1
+  local value=${2:-}
+  printf '%s=%s\n' "$key" "$value" >> "$WORK_DIR/host-info.log"
+  log "$key: $value"
+}
+
+dpkg_versions() {
+  if ! command -v dpkg-query >/dev/null 2>&1; then
+    printf 'unavailable'
+    return 0
+  fi
+  dpkg-query -W -f='${Package}=${Version}\n' "$@" 2>/dev/null | one_line
+}
+
+cpu_tdx_flags() {
+  awk -F: '/^flags[[:space:]]*:/ { print $2; exit }' /proc/cpuinfo 2>/dev/null |
+    tr ' ' '\n' |
+    awk '/^(tdx|tdx_guest|vmx|sgx|seamrr|pconfig)$/ { print }' |
+    sort -u |
+    tr '\n' ',' |
+    sed 's/,$//'
+}
+
+log_host_environment() {
+  local os_pretty qgsd_status qgsd_version flags qemu_packages kernel_package tdx_packages
+
+  : > "$WORK_DIR/host-info.log"
+
+  os_pretty=$(awk -F= '/^PRETTY_NAME=/ { gsub(/^"|"$/, "", $2); print $2 }' /etc/os-release 2>/dev/null | one_line)
+  qgsd_status=$(systemctl is-active qgsd 2>/dev/null || true)
+  qgsd_status=$(printf '%s' "$qgsd_status" | one_line)
+  qgsd_version=$(cmd_output qgsd --version)
+  flags=$(cpu_tdx_flags)
+  qemu_packages=$(dpkg_versions qemu-system-x86 qemu-system-common qemu-system-data qemu-utils)
+  kernel_package=$(dpkg_versions "linux-image-$(uname -r)")
+  tdx_packages=$(dpkg-query -W -f='${Package}=${Version}\n' '*tdx*' 2>/dev/null | one_line || true)
+
+  [ -n "$os_pretty" ] || os_pretty=unavailable
+  [ -n "$qgsd_status" ] || qgsd_status=unavailable
+  [ -n "$qgsd_version" ] || qgsd_version=unavailable
+  [ -n "$flags" ] || flags=unavailable
+  [ -n "$qemu_packages" ] || qemu_packages=unavailable
+  [ -n "$kernel_package" ] || kernel_package=unavailable
+  [ -n "$tdx_packages" ] || tdx_packages=unavailable
+
+  host_info host_uname "$(uname -a)"
+  host_info host_os "$os_pretty"
+  host_info host_kernel_release "$(uname -r)"
+  host_info host_cpu_model "$(awk -F: '/^model name[[:space:]]*:/ { gsub(/^ /, "", $2); print $2; exit }' /proc/cpuinfo 2>/dev/null | one_line)"
+  host_info host_cpu_tdx_flags "$flags"
+  host_info host_kvm_intel_tdx "$(file_value /sys/module/kvm_intel/parameters/tdx)"
+  host_info host_kvm_intel_ept "$(file_value /sys/module/kvm_intel/parameters/ept)"
+  host_info host_qgsd_status "$qgsd_status"
+  host_info host_qgsd_version "$qgsd_version"
+  host_info host_qemu_packages "$qemu_packages"
+  host_info host_kernel_package "$kernel_package"
+  host_info host_tdx_packages "$tdx_packages"
+
+  if [ -f "$IMAGE_DIR/metadata.json" ]; then
+    host_info dstack_metadata "$(one_line < "$IMAGE_DIR/metadata.json")"
+  fi
+}
+
 serial_has() {
   grep -q "$1" "$WORK_DIR/serial.log" 2>/dev/null
 }
@@ -142,6 +225,7 @@ main() {
   export PROFILE_START
 
   log "qemu: $("$QEMU_BIN" --version | head -n 1)"
+  log_host_environment
   log "ovmf: $OVMF_FD"
   log "kernel: $KERNEL_IMAGE"
   log "initramfs: $INITRAMFS"
@@ -251,6 +335,7 @@ main() {
   log "serial markers:"
   grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_' "$WORK_DIR/serial.log" || true
   log "output share: $OUT_SHARE_DIR"
+  log "host info: $WORK_DIR/host-info.log"
   log "profile: $WORK_DIR/profile.log"
   log "serial: $WORK_DIR/serial.log"
 }

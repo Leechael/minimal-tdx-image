@@ -50,6 +50,9 @@ main() {
 
   cp "$BASE_IMAGE_DIR/ovmf.fd" "$IMAGE_OUT/ovmf.fd"
   cp "$BASE_IMAGE_DIR/bzImage" "$IMAGE_OUT/bzImage"
+  if [ -f "$BASE_IMAGE_DIR/metadata.json" ]; then
+    cp "$BASE_IMAGE_DIR/metadata.json" "$IMAGE_OUT/metadata.json"
+  fi
 
   EXTRA_FILES="$initramfs_extra_files" INITRAMFS="$IMAGE_OUT/initramfs.cpio.gz" "$BASE_DIR/build-initramfs.sh"
 
