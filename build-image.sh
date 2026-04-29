@@ -4,6 +4,7 @@ set -euo pipefail
 BASE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 IMAGE_OUT=${IMAGE_OUT:-"$BASE_DIR/out/image"}
+BASE_IMAGE_DIR=${BASE_IMAGE_DIR:-"$BASE_DIR/base"}
 SOURCE_IMAGE_DIR=${SOURCE_IMAGE_DIR:-${IMAGE_DIR:-}}
 OVMF_FD=${OVMF_FD:-}
 KERNEL_IMAGE=${KERNEL_IMAGE:-}
@@ -25,11 +26,14 @@ main() {
   if [ -n "$SOURCE_IMAGE_DIR" ]; then
     OVMF_FD=${OVMF_FD:-"$SOURCE_IMAGE_DIR/ovmf.fd"}
     KERNEL_IMAGE=${KERNEL_IMAGE:-"$SOURCE_IMAGE_DIR/bzImage"}
+  elif [ -d "$BASE_IMAGE_DIR" ]; then
+    OVMF_FD=${OVMF_FD:-"$BASE_IMAGE_DIR/ovmf.fd"}
+    KERNEL_IMAGE=${KERNEL_IMAGE:-"$BASE_IMAGE_DIR/bzImage"}
   fi
 
   [ -n "${PAYLOAD_BIN:-}" ] || die "set PAYLOAD_BIN=/path/to/payload"
-  [ -n "$OVMF_FD" ] || die "set OVMF_FD=/path/to/ovmf.fd or SOURCE_IMAGE_DIR=/dir"
-  [ -n "$KERNEL_IMAGE" ] || die "set KERNEL_IMAGE=/path/to/bzImage or SOURCE_IMAGE_DIR=/dir"
+  [ -n "$OVMF_FD" ] || die "missing ovmf.fd; run ./prepare-base.sh first"
+  [ -n "$KERNEL_IMAGE" ] || die "missing bzImage; run ./prepare-base.sh first"
   require_file "$OVMF_FD"
   require_file "$KERNEL_IMAGE"
 

@@ -1,12 +1,14 @@
 # Minimal TDX Image
 
-This directory builds a small initramfs for QEMU TDX boot tests. It is only a
-payload runner: after minimal setup, `/init` replaces itself with the selected
-payload, so the payload runs as PID 1.
+This directory builds a small initramfs for QEMU tests that boot with Intel
+Trust Domain Extensions (TDX). It is only a payload runner: after minimal setup,
+`/init` replaces itself with the selected payload, so the payload runs as
+process ID 1 (PID 1).
 
 ## Files
 
 ```text
+prepare-base.sh               import TDX firmware and kernel into base/
 build-image.sh                build a runnable image bundle
 build-initramfs.sh             build a payload initramfs
 run-qemu.sh                   boot the initramfs as a TDX guest
@@ -24,22 +26,43 @@ share at `/mnt/out`, exports `OUT_DIR`, and then runs:
 exec /payload/init
 ```
 
-Because the payload becomes PID 1, it should shut the guest down itself when it
-is done:
+After the payload becomes PID 1, it should shut the guest down when it finishes:
 
 ```sh
 sync
 poweroff -f 2>/dev/null || reboot -f 2>/dev/null || exit 0
 ```
 
+## Prepare The Base
+
+Import the TDX-capable OVMF firmware and Linux kernel once:
+
+```bash
+cd minimal-tdx-image
+SOURCE_IMAGE_DIR=/path/to/base-image-dir ./prepare-base.sh
+```
+
+The source directory must contain:
+
+```text
+ovmf.fd
+bzImage
+```
+
+The imported files are written to:
+
+```text
+base/
+  ovmf.fd
+  bzImage
+  manifest.txt
+```
+
 ## Build A Minimal Image
 
 ```bash
 cd minimal-tdx-image
-PAYLOAD_BIN=examples/hello.sh \
-OVMF_FD=/path/to/ovmf.fd \
-KERNEL_IMAGE=/path/to/bzImage \
-./build-image.sh
+PAYLOAD_BIN=examples/hello.sh ./build-image.sh
 ```
 
 The output is:
@@ -52,21 +75,12 @@ out/image/
   manifest.txt
 ```
 
-For convenience, `SOURCE_IMAGE_DIR=/dir` is also accepted when the directory
-contains:
-
-```text
-ovmf.fd
-bzImage
-```
-
-`EXTRA_FILES` can add files to the initramfs. Each item is either
-`src:/guest/path` or just `src`, which installs to `/extra/<basename>`:
+`EXTRA_FILES` can add files to the initramfs. Each item can use
+`src:/guest/path` or `src`. The `src` form installs the file to
+`/extra/<basename>`:
 
 ```bash
 PAYLOAD_BIN=./my-payload \
-OVMF_FD=/path/to/ovmf.fd \
-KERNEL_IMAGE=/path/to/bzImage \
 EXTRA_FILES="/host/tool:/payload/tool /host/config.json:/etc/config.json" \
 ./build-image.sh
 ```
@@ -103,8 +117,6 @@ Build an initramfs that runs the quote generator payload:
 ```bash
 cd minimal-tdx-image
 PAYLOAD_BIN=examples/quote-generator.sh \
-OVMF_FD=/path/to/ovmf.fd \
-KERNEL_IMAGE=/path/to/bzImage \
 EXTRA_FILES="/path/to/quote-generator/tdx/tdx-quote-generator-linux:/payload/tdx-quote-generator-linux" \
 ./build-image.sh
 ```
@@ -117,7 +129,7 @@ EXTRA_FILES="/path/to/quote-generator/tdx/tdx-quote-generator-linux:/payload/tdx
 /path/to/tdx-guest.ko:/lib/modules/tdx-guest.ko"
 ```
 
-Run with QGS enabled:
+Run with the Quote Generation Service (QGS) enabled:
 
 ```bash
 ENABLE_QGS=1 \
