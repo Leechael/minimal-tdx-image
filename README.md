@@ -1,14 +1,13 @@
 # Minimal TDX Image
 
-This is a small learning and benchmarking project for Intel TDX based on
-[dstack](https://github.com/Dstack-TEE/dstack) and
-[meta-dstack](https://github.com/Dstack-TEE/meta-dstack).
+> Lightweight Intel TDX guest images for QEMU, built from dstack releases.
 
-The project reuses the TDX-capable OVMF and Linux kernel published by
-`meta-dstack` releases, then replaces the dstack guest rootfs with a tiny
-initramfs that runs one selected payload as PID 1. This keeps the experiment
-focused on the TDX/QEMU boot path and guest payload behavior without pulling in
-the full dstack userspace stack.
+A minimal toolkit for running and benchmarking Intel Trust Domain Extensions
+(TDX) workloads. It downloads the TDX-capable OVMF and Linux kernel from
+[meta-dstack](https://github.com/Dstack-TEE/meta-dstack) releases, then builds
+a tiny initramfs around a single payload — keeping the boot path small and
+focused on the TDX/QEMU guest behavior without pulling in the full dstack
+userspace stack.
 
 ## What This Builds
 
