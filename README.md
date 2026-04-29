@@ -140,6 +140,10 @@ runs/<timestamp>/profile.log
 runs/<timestamp>/serial.log
 ```
 
+`profile.log` includes host-side QEMU timing markers such as
+`first_serial_byte`, `linux_version`, `guest_init_begin`, and
+`guest_payload_exec`.
+
 To compare QEMU versions, keep the image and VM parameters fixed and change only
 `QEMU_BIN`:
 
@@ -202,6 +206,26 @@ Expected output:
 ```text
 runs/<timestamp>/out/quote.bin
 runs/<timestamp>/out/quote-generator.log
+runs/<timestamp>/profile.log
+runs/<timestamp>/serial.log
+```
+
+The quote example adds extra timing markers to `profile.log`:
+
+```text
+quote_example_begin
+quote_load_tdx_guest_module_begin
+quote_load_tdx_guest_module_end
+quote_tdx_guest_ready
+quote_qgs_port_ready
+quote_generator_ready
+quote_generator_start
+quote_ppid_printed
+quote_device_id_printed
+quote_generator_done
+quote_size_reported
+quote_done
+quote_example_end
 ```
 
 Custom report data:

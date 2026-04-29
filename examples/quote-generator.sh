@@ -21,10 +21,21 @@ finish() {
   poweroff -f 2>/dev/null || reboot -f 2>/dev/null || exit "$rc"
 }
 
+uptime_now() {
+  cut -d' ' -f1 /proc/uptime 2>/dev/null || printf 0
+}
+
+mark() {
+  printf 'TDX_QUOTE_EXAMPLE_%s uptime=%s\n' "$1" "$(uptime_now)"
+}
+
 mkdir -p "$OUT_DIR"
+mark BEGIN
 
 if [ ! -e /dev/tdx_guest ] && [ -f /lib/modules/tdx-guest.ko ]; then
+  mark LOAD_TDX_GUEST_MODULE_BEGIN
   insmod /lib/modules/tdx-guest.ko || true
+  mark LOAD_TDX_GUEST_MODULE_END
 fi
 
 if [ ! -e /dev/tdx_guest ]; then
@@ -33,15 +44,19 @@ if [ ! -e /dev/tdx_guest ]; then
 fi
 
 if [ ! -e /dev/tdx_guest ]; then
+  mark ERROR_TDX_GUEST_MISSING
   echo "quote_error=/dev/tdx_guest_missing"
   finish 2
 fi
+mark TDX_GUEST_READY
 
 QGS_PORT=$(cmdline_value qgs_port || printf '')
 if [ -z "$QGS_PORT" ]; then
+  mark ERROR_QGS_PORT_MISSING
   echo "quote_error=qgs_port_missing"
   finish 2
 fi
+mark QGS_PORT_READY
 
 REPORT_DATA_HEX=$(cmdline_value report_data_hex || printf '')
 DEVICE_ID_REPORT_DATA=$(cmdline_value device_id_report_data || printf '0')
@@ -61,6 +76,7 @@ if [ -z "$QUOTE_GENERATOR" ]; then
 fi
 
 if [ ! -x "$QUOTE_GENERATOR" ]; then
+  mark ERROR_GENERATOR_MISSING
   echo "quote_error=tdx_quote_generator_missing"
   echo "quote_generator_checked=/payload/tdx-quote-generator-linux"
   echo "quote_generator_checked=$IN_DIR/tdx-quote-generator-linux"
@@ -68,31 +84,38 @@ if [ ! -x "$QUOTE_GENERATOR" ]; then
   echo "quote_generator_checked=$IN_DIR/quote-generator/tdx/tdx-quote-generator-linux"
   finish 2
 fi
+mark GENERATOR_READY
 
 QUOTE_LOG="$OUT_DIR/quote-generator.log"
 echo "quote_begin"
 echo "quote_generator=$QUOTE_GENERATOR"
+mark GENERATOR_START
 if [ "$DEVICE_ID_REPORT_DATA" = 1 ]; then
   "$QUOTE_GENERATOR" -qgs-port "$QGS_PORT" -device-id-report-data -print-ppid -print-device-id -o "$OUT_DIR/quote.bin" > "$QUOTE_LOG" 2>&1 || {
     rc=$?
+    mark ERROR_GENERATOR_FAILED
     cat "$QUOTE_LOG" 2>/dev/null || true
     finish "$rc"
   }
 elif [ -n "$REPORT_DATA_HEX" ]; then
   "$QUOTE_GENERATOR" -qgs-port "$QGS_PORT" -d "$REPORT_DATA_HEX" -print-ppid -print-device-id -o "$OUT_DIR/quote.bin" > "$QUOTE_LOG" 2>&1 || {
     rc=$?
+    mark ERROR_GENERATOR_FAILED
     cat "$QUOTE_LOG" 2>/dev/null || true
     finish "$rc"
   }
 else
   "$QUOTE_GENERATOR" -qgs-port "$QGS_PORT" -print-ppid -print-device-id -o "$OUT_DIR/quote.bin" > "$QUOTE_LOG" 2>&1 || {
     rc=$?
+    mark ERROR_GENERATOR_FAILED
     cat "$QUOTE_LOG" 2>/dev/null || true
     finish "$rc"
   }
 fi
+mark GENERATOR_DONE
 cat "$QUOTE_LOG" 2>/dev/null || true
 stat -c 'quote_size=%s' "$OUT_DIR/quote.bin" 2>/dev/null || true
 sha256sum "$OUT_DIR/quote.bin" 2>/dev/null | sed 's/^/quote_sha256=/' || true
 echo "quote_done"
+mark END
 finish 0

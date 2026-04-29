@@ -41,6 +41,10 @@ require_file() {
   [ -f "$1" ] || die "missing file: $1"
 }
 
+serial_has() {
+  grep -q "$1" "$WORK_DIR/serial.log" 2>/dev/null
+}
+
 is_pid_alive() {
   [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null
 }
@@ -54,6 +58,38 @@ profile() {
   now=$(now_ns)
   awk -v now="$now" -v start="$PROFILE_START" -v msg="$*" \
     'BEGIN { printf("PROFILE +%.3fs %s\n", now - start, msg); fflush(); }' | tee -a "$WORK_DIR/profile.log"
+}
+
+profile_once() {
+  local var_name=$1
+  local pattern=$2
+  local label=$3
+  local value
+
+  eval "value=\${$var_name}"
+  if [ "$value" = 0 ] && serial_has "$pattern"; then
+    eval "$var_name=1"
+    profile "$label"
+  fi
+}
+
+scan_serial_markers() {
+  profile_once linux_version 'Linux version' linux_version
+  profile_once init_begin 'MINIMAL_TDX init_begin' guest_init_begin
+  profile_once payload_exec 'MINIMAL_TDX payload_exec' guest_payload_exec
+  profile_once quote_begin 'TDX_QUOTE_EXAMPLE_BEGIN' quote_example_begin
+  profile_once quote_load_module_begin 'TDX_QUOTE_EXAMPLE_LOAD_TDX_GUEST_MODULE_BEGIN' quote_load_tdx_guest_module_begin
+  profile_once quote_load_module_end 'TDX_QUOTE_EXAMPLE_LOAD_TDX_GUEST_MODULE_END' quote_load_tdx_guest_module_end
+  profile_once quote_tdx_ready 'TDX_QUOTE_EXAMPLE_TDX_GUEST_READY' quote_tdx_guest_ready
+  profile_once quote_qgs_ready 'TDX_QUOTE_EXAMPLE_QGS_PORT_READY' quote_qgs_port_ready
+  profile_once quote_generator_ready 'TDX_QUOTE_EXAMPLE_GENERATOR_READY' quote_generator_ready
+  profile_once quote_generator_start 'TDX_QUOTE_EXAMPLE_GENERATOR_START' quote_generator_start
+  profile_once quote_ppid '^ppid=' quote_ppid_printed
+  profile_once quote_device_id '^device_id=' quote_device_id_printed
+  profile_once quote_generator_done 'TDX_QUOTE_EXAMPLE_GENERATOR_DONE' quote_generator_done
+  profile_once quote_size '^quote_size=' quote_size_reported
+  profile_once quote_done '^quote_done' quote_done
+  profile_once quote_end 'TDX_QUOTE_EXAMPLE_END' quote_example_end
 }
 
 main() {
@@ -156,11 +192,28 @@ main() {
   pid=$(cat "$WORK_DIR/qemu.pid")
   profile "qemu_pid=$pid"
 
-  local wait_start first_serial init_begin payload_exec
+  local wait_start first_serial linux_version init_begin payload_exec
+  local quote_begin quote_load_module_begin quote_load_module_end quote_tdx_ready quote_qgs_ready quote_generator_ready
+  local quote_generator_start quote_generator_done quote_ppid quote_device_id
+  local quote_size quote_done quote_end
   wait_start=$(date +%s)
   first_serial=0
+  linux_version=0
   init_begin=0
   payload_exec=0
+  quote_begin=0
+  quote_load_module_begin=0
+  quote_load_module_end=0
+  quote_tdx_ready=0
+  quote_qgs_ready=0
+  quote_generator_ready=0
+  quote_generator_start=0
+  quote_generator_done=0
+  quote_ppid=0
+  quote_device_id=0
+  quote_size=0
+  quote_done=0
+  quote_end=0
 
   while is_pid_alive "$pid"; do
     if [ "$(($(date +%s) - wait_start))" -ge "$TIMEOUT_SECONDS" ]; then
@@ -171,20 +224,14 @@ main() {
       first_serial=1
       profile "first_serial_byte"
     fi
-    if [ "$init_begin" = 0 ] && grep -q 'MINIMAL_TDX init_begin' "$WORK_DIR/serial.log" 2>/dev/null; then
-      init_begin=1
-      profile "guest_init_begin"
-    fi
-    if [ "$payload_exec" = 0 ] && grep -q 'MINIMAL_TDX payload_exec' "$WORK_DIR/serial.log" 2>/dev/null; then
-      payload_exec=1
-      profile "guest_payload_exec"
-    fi
+    scan_serial_markers
     sleep 0.1
   done
+  scan_serial_markers
   profile "qemu_exit"
 
   log "serial markers:"
-  grep -E 'MINIMAL_TDX' "$WORK_DIR/serial.log" || true
+  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=' "$WORK_DIR/serial.log" || true
   log "output share: $OUT_SHARE_DIR"
   log "profile: $WORK_DIR/profile.log"
   log "serial: $WORK_DIR/serial.log"
