@@ -1,0 +1,90 @@
+name: Release on Tag
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v0.1.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  archive-release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Validate scripts
+        run: |
+          bash -n \
+            build-base.sh \
+            build-image.sh \
+            build-initramfs.sh \
+            run-qemu.sh \
+            examples/run-quote-generator.sh \
+            scripts/next-version.sh
+          sh -n \
+            examples/hello.sh \
+            examples/quote-generator.sh
+
+      - name: Validate naming contract
+        run: |
+          test -f release-naming.env
+          source release-naming.env
+          test -n "$PROJECT_NAME"
+          test -n "$TAG_PREFIX"
+          test -n "$ARTIFACT_GLOB"
+
+      - name: Build git archive asset
+        run: |
+          source release-naming.env
+          mkdir -p dist
+          artifact="dist/${PROJECT_NAME}-${RELEASE_TAG}.tar.gz"
+          git archive --format=tar.gz --prefix="${PROJECT_NAME}-${RELEASE_TAG}/" -o "$artifact" "$RELEASE_TAG"
+          (cd dist && sha256sum ./*.tar.gz > checksums.txt)
+
+      - name: Generate CHANGELOG.md
+        run: |
+          source release-naming.env
+          current_tag="${RELEASE_TAG}"
+          previous_tag=$(git tag -l "${TAG_PREFIX}*" --sort=-version:refname | grep -v "^${current_tag}$" | head -n 1 || true)
+
+          {
+            echo "# Changelog"
+            echo
+            echo "## ${current_tag}"
+            echo
+            if [ -n "${previous_tag}" ]; then
+              echo "Changes since ${previous_tag}:"
+              echo
+              git log --pretty='- %s (%h)' "${previous_tag}..${current_tag}"
+            else
+              echo "Initial release changes:"
+              echo
+              git log --pretty='- %s (%h)' "${current_tag}"
+            fi
+          } > dist/CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: minimal-tdx-image ${{ env.RELEASE_TAG }}
+          body_path: dist/CHANGELOG.md
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+            dist/CHANGELOG.md
+          prerelease: ${{ contains(env.RELEASE_TAG, '-alpha.') || contains(env.RELEASE_TAG, '-beta.') || contains(env.RELEASE_TAG, '-rc.') }}

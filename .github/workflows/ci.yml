@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate shell scripts
+        run: |
+          bash -n \
+            build-base.sh \
+            build-image.sh \
+            build-initramfs.sh \
+            run-qemu.sh \
+            examples/run-quote-generator.sh \
+            scripts/next-version.sh
+          sh -n \
+            examples/hello.sh \
+            examples/quote-generator.sh
+
+      - name: Validate release naming contract
+        run: |
+          test -f release-naming.env
+          source release-naming.env
+          test "$PROJECT_NAME" = "minimal-tdx-image"
+          test "$TAG_PREFIX" = "v"
+          test -n "$ARTIFACT_GLOB"
+
+      - name: Validate next version script
+        run: |
+          chmod +x scripts/next-version.sh
+          ./scripts/next-version.sh patch | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+
+      - name: Validate git archive contents
+        run: |
+          source release-naming.env
+          archive="/tmp/${PROJECT_NAME}-ci.tar.gz"
+          git archive --format=tar.gz --prefix="${PROJECT_NAME}-ci/" -o "$archive" HEAD
+          tar -tzf "$archive" > /tmp/archive-files.txt
+
+          grep -q "^${PROJECT_NAME}-ci/README.md$" /tmp/archive-files.txt
+          grep -q "^${PROJECT_NAME}-ci/build-base.sh$" /tmp/archive-files.txt
+          grep -q "^${PROJECT_NAME}-ci/run-qemu.sh$" /tmp/archive-files.txt
+
+          if grep -E "^${PROJECT_NAME}-ci/(base|build|out|runs|\\.work|\\.downloads|\\.doc-review)/" /tmp/archive-files.txt; then
+            echo "Generated files leaked into git archive"
+            exit 1
+          fi
