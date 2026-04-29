@@ -246,8 +246,13 @@ int main(void) {
 
       uint64_t percent = ((i + 1) * 100ULL) / pages;
       if (percent >= next_progress) {
-        emit("MEM_FILL_PROGRESS bytes=%" PRIu64 " percent=%" PRIu64 " uptime=%.3f",
-             (i + 1) * page_size, percent, monotonic_seconds());
+        uint64_t bytes = (i + 1) * page_size;
+        double elapsed = monotonic_seconds() - start;
+        double mib = (double)bytes / 1024.0 / 1024.0;
+        double mib_per_sec = elapsed > 0 ? mib / elapsed : 0;
+        emit("MEM_FILL_PROGRESS bytes=%" PRIu64 " percent=%" PRIu64
+             " seconds=%.3f mib_per_sec=%.3f uptime=%.3f",
+             bytes, percent, elapsed, mib_per_sec, monotonic_seconds());
         next_progress += progress_percent;
       }
     }
@@ -261,8 +266,13 @@ int main(void) {
 
       uint64_t percent = ((i + 1) * 100ULL) / words;
       if (percent >= next_progress) {
-        emit("MEM_FILL_PROGRESS bytes=%" PRIu64 " percent=%" PRIu64 " uptime=%.3f",
-             (i + 1) * (uint64_t)sizeof(uint64_t), percent, monotonic_seconds());
+        uint64_t bytes = (i + 1) * (uint64_t)sizeof(uint64_t);
+        double elapsed = monotonic_seconds() - start;
+        double mib = (double)bytes / 1024.0 / 1024.0;
+        double mib_per_sec = elapsed > 0 ? mib / elapsed : 0;
+        emit("MEM_FILL_PROGRESS bytes=%" PRIu64 " percent=%" PRIu64
+             " seconds=%.3f mib_per_sec=%.3f uptime=%.3f",
+             bytes, percent, elapsed, mib_per_sec, monotonic_seconds());
         next_progress += progress_percent;
       }
     }

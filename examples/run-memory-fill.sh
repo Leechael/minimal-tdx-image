@@ -8,6 +8,7 @@ VM_MEMORY=${VM_MEMORY:-2G}
 GUEST_CID=${GUEST_CID:-7798}
 RUN_ID=${RUN_ID:-memfill-$(date -u +%Y%m%dT%H%M%SZ)}
 RUN_ROOT=${RUN_ROOT:-"$BASE_DIR/runs"}
+TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-3600}
 MEM_FILL_MODE=${MEM_FILL_MODE:-full}
 MEM_FILL_PERCENT=${MEM_FILL_PERCENT:-90}
 MEM_FILL_LEAVE_MB=${MEM_FILL_LEAVE_MB:-256}
@@ -68,6 +69,7 @@ main() {
 
   log "run id: $RUN_ID"
   log "memory: $VM_MEMORY"
+  log "timeout seconds: $TIMEOUT_SECONDS"
   log "mode: $MEM_FILL_MODE"
   log "kernel append: $append"
 
@@ -76,6 +78,7 @@ main() {
     PAYLOAD_BIN="$payload" ./build-image.sh
     VM_MEMORY="$VM_MEMORY" \
     GUEST_CID="$GUEST_CID" \
+    TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
     RUN_ID="$RUN_ID" \
     RUN_ROOT="$RUN_ROOT" \
     KERNEL_APPEND="$append" \

@@ -156,6 +156,30 @@ profile_once() {
   fi
 }
 
+scan_memfill_progress() {
+  local line percent
+
+  [ -f "$WORK_DIR/serial.log" ] || return 0
+  while IFS= read -r line; do
+    case "$line" in
+      *MEM_FILL_PROGRESS*percent=*)
+        percent=${line#*percent=}
+        percent=${percent%% *}
+        case "$percent" in
+          ''|*[!0-9]*) continue ;;
+        esac
+        case " $memfill_progress_seen " in
+          *" $percent "*) ;;
+          *)
+            memfill_progress_seen="$memfill_progress_seen $percent"
+            profile "memfill_progress_${percent}"
+            ;;
+        esac
+        ;;
+    esac
+  done < "$WORK_DIR/serial.log"
+}
+
 scan_serial_markers() {
   profile_once linux_version 'Linux version' linux_version
   profile_once init_begin 'MINIMAL_TDX init_begin' guest_init_begin
@@ -177,10 +201,20 @@ scan_serial_markers() {
   profile_once memfill_alloc_begin 'MEM_FILL_ALLOC_BEGIN' memfill_alloc_begin
   profile_once memfill_alloc_end 'MEM_FILL_ALLOC_END' memfill_alloc_end
   profile_once memfill_write_begin 'MEM_FILL_WRITE_BEGIN' memfill_write_begin
+  scan_memfill_progress
   profile_once memfill_write_end 'MEM_FILL_WRITE_END' memfill_write_end
   profile_once memfill_result '^MEM_FILL_RESULT' memfill_result
   profile_once memfill_end 'MEM_FILL_END' memfill_end
   profile_once memfill_poweroff_begin 'MEM_FILL_POWEROFF_BEGIN' memfill_poweroff_begin
+}
+
+print_run_artifacts() {
+  log "serial markers:"
+  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_' "$WORK_DIR/serial.log" || true
+  log "output share: $OUT_SHARE_DIR"
+  log "host info: $WORK_DIR/host-info.log"
+  log "profile: $WORK_DIR/profile.log"
+  log "serial: $WORK_DIR/serial.log"
 }
 
 main() {
@@ -231,6 +265,7 @@ main() {
   log "initramfs: $INITRAMFS"
   log "guest cid: $GUEST_CID"
   log "memory: $VM_MEMORY"
+  log "timeout seconds: $TIMEOUT_SECONDS"
   log "work dir: $WORK_DIR"
 
   local tdx_object append
@@ -290,6 +325,7 @@ main() {
   local quote_size quote_done quote_end
   local memfill_begin memfill_alloc_begin memfill_alloc_end memfill_write_begin
   local memfill_write_end memfill_result memfill_end memfill_poweroff_begin
+  local memfill_progress_seen
   wait_start=$(date +%s)
   first_serial=0
   linux_version=0
@@ -316,9 +352,13 @@ main() {
   memfill_result=0
   memfill_end=0
   memfill_poweroff_begin=0
+  memfill_progress_seen=""
 
   while is_pid_alive "$pid"; do
     if [ "$(($(date +%s) - wait_start))" -ge "$TIMEOUT_SECONDS" ]; then
+      scan_serial_markers
+      profile "timeout"
+      print_run_artifacts
       kill "$pid" 2>/dev/null || true
       die "timed out waiting for qemu exit; inspect $WORK_DIR/serial.log"
     fi
@@ -332,12 +372,7 @@ main() {
   scan_serial_markers
   profile "qemu_exit"
 
-  log "serial markers:"
-  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_' "$WORK_DIR/serial.log" || true
-  log "output share: $OUT_SHARE_DIR"
-  log "host info: $WORK_DIR/host-info.log"
-  log "profile: $WORK_DIR/profile.log"
-  log "serial: $WORK_DIR/serial.log"
+  print_run_artifacts
 }
 
 main "$@"

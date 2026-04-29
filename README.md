@@ -286,7 +286,13 @@ MEM_FILL_MB=                   explicit MiB target
 MEM_FILL_BYTES=                explicit byte target
 MEM_FILL_PROGRESS_PERCENT=5    serial progress interval
 MEM_FILL_SLEEP_SECONDS=0       sleep after write, before poweroff
+TIMEOUT_SECONDS=3600           host-side timeout used by this example
 ```
+
+`full` mode writes every 64-bit word in the target range, so large samples are
+dominated by guest memory bandwidth. `page` mode touches one 64-bit word per
+page, which is often the better first pass when isolating TDX entry, page
+acceptance, and teardown effects from bulk write throughput.
 
 The output files are:
 
@@ -304,6 +310,7 @@ memfill_begin
 memfill_alloc_begin
 memfill_alloc_end
 memfill_write_begin
+memfill_progress_<percent>
 memfill_write_end
 memfill_result
 memfill_end
@@ -311,9 +318,11 @@ memfill_poweroff_begin
 qemu_exit
 ```
 
-`memory-fill.log` includes the target size, progress samples, write throughput,
-and checksum. The payload does not free the allocation before shutdown, so the
-dirty private pages remain present when QEMU exits.
+`memory-fill.log` includes the target size, progress samples, elapsed seconds,
+write throughput, and checksum. If the run times out, `run-qemu.sh` still prints
+the serial markers and artifact paths before terminating QEMU. The payload does
+not free the allocation before shutdown, so the dirty private pages remain
+present when QEMU exits.
 
 ## Relationship To dstack
 
