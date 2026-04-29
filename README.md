@@ -39,6 +39,8 @@ examples/hello.sh             minimal payload example
 examples/quote-generator.sh   quote-generator payload example
 examples/run-quote-generator.sh
                               host-side quote-generator example workflow
+examples/memory-fill.c        memory dirtying benchmark payload
+examples/run-memory-fill.sh   host-side memory-fill benchmark workflow
 ```
 
 ## Build Base Artifacts
@@ -239,6 +241,74 @@ dstack device-id report data:
 ```bash
 KERNEL_APPEND="device_id_report_data=1" ENABLE_QGS=1 ./run-qemu.sh
 ```
+
+## Memory Fill Example
+
+The memory-fill example measures how VM memory size affects TDX entry, guest
+boot, memory dirtying, and shutdown time. It builds a static PID 1 payload that
+allocates guest memory and writes pseudo-random 64-bit values across the
+allocated range.
+
+Run a 2 GiB VM and fill 90% of guest memory:
+
+```bash
+VM_MEMORY=2G ./examples/run-memory-fill.sh
+```
+
+Run a 200 GiB VM:
+
+```bash
+VM_MEMORY=200G \
+MEM_FILL_PERCENT=90 \
+MEM_FILL_PROGRESS_PERCENT=10 \
+./examples/run-memory-fill.sh
+```
+
+Use an explicit fill size instead of a percentage:
+
+```bash
+VM_MEMORY=200G MEM_FILL_GB=180 ./examples/run-memory-fill.sh
+```
+
+Important knobs:
+
+```text
+MEM_FILL_MODE=full             write pseudo-random data across the full range
+MEM_FILL_MODE=page             touch one pseudo-random 64-bit word per page
+MEM_FILL_PERCENT=90            default target percentage of MemTotal
+MEM_FILL_LEAVE_MB=256          keep this much MemAvailable unallocated
+MEM_FILL_GB=                   explicit GiB target
+MEM_FILL_MB=                   explicit MiB target
+MEM_FILL_BYTES=                explicit byte target
+MEM_FILL_PROGRESS_PERCENT=5    serial progress interval
+MEM_FILL_SLEEP_SECONDS=0       sleep after write, before poweroff
+```
+
+The output files are:
+
+```text
+runs/<timestamp>/profile.log
+runs/<timestamp>/serial.log
+runs/<timestamp>/out/memory-fill.log
+```
+
+`profile.log` includes:
+
+```text
+memfill_begin
+memfill_alloc_begin
+memfill_alloc_end
+memfill_write_begin
+memfill_write_end
+memfill_result
+memfill_end
+memfill_poweroff_begin
+qemu_exit
+```
+
+`memory-fill.log` includes the target size, progress samples, write throughput,
+and checksum. The payload does not free the allocation before shutdown, so the
+dirty private pages remain present when QEMU exits.
 
 ## Relationship To dstack
 

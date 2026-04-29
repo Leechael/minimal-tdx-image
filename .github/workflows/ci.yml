@@ -33,10 +33,15 @@ jobs:
             build-initramfs.sh \
             run-qemu.sh \
             examples/run-quote-generator.sh \
+            examples/run-memory-fill.sh \
             scripts/next-version.sh
           sh -n \
             examples/hello.sh \
             examples/quote-generator.sh
+
+      - name: Validate C examples
+        run: |
+          cc -O2 -Wall -Wextra -c examples/memory-fill.c -o /tmp/memory-fill.o
 
       - name: Validate release naming contract
         run: |

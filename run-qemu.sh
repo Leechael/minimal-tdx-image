@@ -90,6 +90,14 @@ scan_serial_markers() {
   profile_once quote_size '^quote_size=' quote_size_reported
   profile_once quote_done '^quote_done' quote_done
   profile_once quote_end 'TDX_QUOTE_EXAMPLE_END' quote_example_end
+  profile_once memfill_begin 'MEM_FILL_BEGIN' memfill_begin
+  profile_once memfill_alloc_begin 'MEM_FILL_ALLOC_BEGIN' memfill_alloc_begin
+  profile_once memfill_alloc_end 'MEM_FILL_ALLOC_END' memfill_alloc_end
+  profile_once memfill_write_begin 'MEM_FILL_WRITE_BEGIN' memfill_write_begin
+  profile_once memfill_write_end 'MEM_FILL_WRITE_END' memfill_write_end
+  profile_once memfill_result '^MEM_FILL_RESULT' memfill_result
+  profile_once memfill_end 'MEM_FILL_END' memfill_end
+  profile_once memfill_poweroff_begin 'MEM_FILL_POWEROFF_BEGIN' memfill_poweroff_begin
 }
 
 main() {
@@ -196,6 +204,8 @@ main() {
   local quote_begin quote_load_module_begin quote_load_module_end quote_tdx_ready quote_qgs_ready quote_generator_ready
   local quote_generator_start quote_generator_done quote_ppid quote_device_id
   local quote_size quote_done quote_end
+  local memfill_begin memfill_alloc_begin memfill_alloc_end memfill_write_begin
+  local memfill_write_end memfill_result memfill_end memfill_poweroff_begin
   wait_start=$(date +%s)
   first_serial=0
   linux_version=0
@@ -214,6 +224,14 @@ main() {
   quote_size=0
   quote_done=0
   quote_end=0
+  memfill_begin=0
+  memfill_alloc_begin=0
+  memfill_alloc_end=0
+  memfill_write_begin=0
+  memfill_write_end=0
+  memfill_result=0
+  memfill_end=0
+  memfill_poweroff_begin=0
 
   while is_pid_alive "$pid"; do
     if [ "$(($(date +%s) - wait_start))" -ge "$TIMEOUT_SECONDS" ]; then
@@ -231,7 +249,7 @@ main() {
   profile "qemu_exit"
 
   log "serial markers:"
-  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=' "$WORK_DIR/serial.log" || true
+  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_' "$WORK_DIR/serial.log" || true
   log "output share: $OUT_SHARE_DIR"
   log "profile: $WORK_DIR/profile.log"
   log "serial: $WORK_DIR/serial.log"
