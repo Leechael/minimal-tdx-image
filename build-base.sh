@@ -3,11 +3,12 @@ set -euo pipefail
 
 BASE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-META_DSTACK_REPO=${META_DSTACK_REPO:-https://github.com/dstack-TEE/meta-dstack.git}
-META_DSTACK_REF=${META_DSTACK_REF:-v0.5.9}
-WORK_ROOT=${WORK_ROOT:-"$BASE_DIR/.work"}
-META_DSTACK_DIR=${META_DSTACK_DIR:-"$WORK_ROOT/meta-dstack"}
-BB_BUILD_DIR=${BB_BUILD_DIR:-"$META_DSTACK_DIR/bb-build"}
+DSTACK_RELEASE_REPO=${DSTACK_RELEASE_REPO:-Dstack-TEE/meta-dstack}
+DSTACK_RELEASE_TAG=${DSTACK_RELEASE_TAG:-latest}
+DSTACK_DIST=${DSTACK_DIST:-dstack}
+DSTACK_ASSET=${DSTACK_ASSET:-}
+DOWNLOAD_DIR=${DOWNLOAD_DIR:-"$BASE_DIR/.downloads"}
+EXTRACT_DIR=${EXTRACT_DIR:-"$BASE_DIR/.work/release"}
 BASE_IMAGE_DIR=${BASE_IMAGE_DIR:-"$BASE_DIR/base"}
 
 log() {
@@ -27,98 +28,90 @@ require_file() {
   [ -f "$1" ] || die "missing file: $1"
 }
 
-checkout_meta_dstack() {
-  mkdir -p "$WORK_ROOT"
+resolve_release_tag() {
+  local effective_url
 
-  if [ ! -d "$META_DSTACK_DIR/.git" ]; then
-    log "cloning meta-dstack: $META_DSTACK_REPO"
-    git clone --recursive "$META_DSTACK_REPO" "$META_DSTACK_DIR"
-  fi
-
-  (
-    cd "$META_DSTACK_DIR"
-    git fetch --tags origin '+refs/heads/*:refs/remotes/origin/*'
-
-    if git rev-parse --verify --quiet "refs/remotes/origin/$META_DSTACK_REF" >/dev/null; then
-      git checkout --force -B "$META_DSTACK_REF" "origin/$META_DSTACK_REF"
-    else
-      git checkout --force --detach "$META_DSTACK_REF"
-    fi
-
-    git submodule sync --recursive
-    git submodule update --init --recursive
-  )
-}
-
-build_meta_dstack_base() {
-  log "building meta-dstack base artifacts"
-  log "meta-dstack dir: $META_DSTACK_DIR"
-  log "meta-dstack ref: $META_DSTACK_REF"
-  log "bitbake build dir: $BB_BUILD_DIR"
-
-  (
-    cd "$META_DSTACK_DIR"
-    # dev-setup wires poky, layers, MACHINE, DISTRO, and BitBake environment.
-    source ./dev-setup "$BB_BUILD_DIR"
-    bitbake virtual/kernel dstack-ovmf
-  )
-}
-
-find_deploy_dir() {
-  local images_dir="$BB_BUILD_DIR/tmp/deploy/images"
-  local deploy_dir
-  [ -d "$images_dir" ] || die "Yocto deploy images directory not found: $images_dir"
-
-  if [ -d "$images_dir/tdx" ]; then
-    printf '%s\n' "$images_dir/tdx"
+  if [ "$DSTACK_RELEASE_TAG" != "latest" ]; then
+    printf '%s\n' "$DSTACK_RELEASE_TAG"
     return 0
   fi
 
-  deploy_dir=$(find "$images_dir" -mindepth 1 -maxdepth 1 -type d | sort | head -n 1)
-  [ -n "$deploy_dir" ] || die "no Yocto deploy image directory found under $images_dir"
-  printf '%s\n' "$deploy_dir"
+  effective_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    "https://github.com/$DSTACK_RELEASE_REPO/releases/latest")
+  [ -n "$effective_url" ] || die "failed to resolve latest release"
+  printf '%s\n' "${effective_url##*/}"
 }
 
-find_kernel_image() {
-  local deploy_dir=$1
+download_release_asset() {
+  local tag=$1
+  local version asset url archive
 
-  if [ -e "$deploy_dir/bzImage" ]; then
-    printf '%s\n' "$deploy_dir/bzImage"
-    return 0
+  version=${tag#v}
+  asset=${DSTACK_ASSET:-"$DSTACK_DIST-$version.tar.gz"}
+  url="https://github.com/$DSTACK_RELEASE_REPO/releases/download/$tag/$asset"
+  archive="$DOWNLOAD_DIR/$asset"
+
+  mkdir -p "$DOWNLOAD_DIR"
+  if [ ! -s "$archive" ]; then
+    log "downloading: $url"
+    curl -fL --retry 3 --retry-delay 2 -o "$archive.tmp" "$url"
+    mv "$archive.tmp" "$archive"
+  else
+    log "using cached archive: $archive"
   fi
 
-  find "$deploy_dir" -maxdepth 1 \( -type f -o -type l \) -name 'bzImage*' | sort | tail -n 1
+  printf '%s\n' "$archive"
+}
+
+extract_release_asset() {
+  local tag=$1
+  local archive=$2
+  local target="$EXTRACT_DIR/$tag"
+
+  rm -rf "$target"
+  mkdir -p "$target"
+  tar -xzf "$archive" -C "$target"
+  printf '%s\n' "$target"
+}
+
+find_bundle_dir() {
+  local target=$1
+  local ovmf
+
+  ovmf=$(find "$target" -type f -name ovmf.fd | sort | head -n 1)
+  [ -n "$ovmf" ] || die "ovmf.fd not found in extracted release: $target"
+  dirname "$ovmf"
 }
 
 install_base_artifacts() {
-  local deploy_dir ovmf_fd kernel_image commit
+  local tag=$1
+  local archive=$2
+  local bundle_dir=$3
+  local metadata="$bundle_dir/metadata.json"
 
-  deploy_dir=$(find_deploy_dir)
-  ovmf_fd="$deploy_dir/ovmf.fd"
-  kernel_image=$(find_kernel_image "$deploy_dir")
-
-  require_file "$ovmf_fd"
-  [ -n "$kernel_image" ] || die "bzImage not found in $deploy_dir"
-  require_file "$kernel_image"
+  require_file "$bundle_dir/ovmf.fd"
+  require_file "$bundle_dir/bzImage"
 
   rm -rf "$BASE_IMAGE_DIR"
   mkdir -p "$BASE_IMAGE_DIR"
 
-  cp -L "$ovmf_fd" "$BASE_IMAGE_DIR/ovmf.fd"
-  cp -L "$kernel_image" "$BASE_IMAGE_DIR/bzImage"
+  cp "$bundle_dir/ovmf.fd" "$BASE_IMAGE_DIR/ovmf.fd"
+  cp "$bundle_dir/bzImage" "$BASE_IMAGE_DIR/bzImage"
+  if [ -f "$metadata" ]; then
+    cp "$metadata" "$BASE_IMAGE_DIR/metadata.json"
+  fi
 
-  commit=$(git -C "$META_DSTACK_DIR" rev-parse HEAD)
   {
     printf 'ovmf=ovmf.fd\n'
     printf 'kernel=bzImage\n'
-    printf 'source=meta-dstack\n'
-    printf 'meta_dstack_repo=%s\n' "$META_DSTACK_REPO"
-    printf 'meta_dstack_ref=%s\n' "$META_DSTACK_REF"
-    printf 'meta_dstack_commit=%s\n' "$commit"
-    printf 'bb_build_dir=%s\n' "$BB_BUILD_DIR"
-    printf 'deploy_dir=%s\n' "$deploy_dir"
-    printf 'source_ovmf=%s\n' "$ovmf_fd"
-    printf 'source_kernel=%s\n' "$kernel_image"
+    printf 'source=dstack-release\n'
+    printf 'release_repo=%s\n' "$DSTACK_RELEASE_REPO"
+    printf 'release_tag=%s\n' "$tag"
+    printf 'release_asset=%s\n' "$(basename "$archive")"
+    printf 'archive=%s\n' "$archive"
+    printf 'source_dir=%s\n' "$bundle_dir"
+    printf 'source_ovmf=%s\n' "$bundle_dir/ovmf.fd"
+    printf 'source_kernel=%s\n' "$bundle_dir/bzImage"
   } > "$BASE_IMAGE_DIR/manifest.txt"
 
   log "base image dir: $BASE_IMAGE_DIR"
@@ -126,13 +119,21 @@ install_base_artifacts() {
 }
 
 main() {
-  need_cmd git
+  local tag archive extracted bundle_dir
+
+  need_cmd curl
+  need_cmd tar
   need_cmd find
   need_cmd sort
 
-  checkout_meta_dstack
-  build_meta_dstack_base
-  install_base_artifacts
+  tag=$(resolve_release_tag)
+  log "release repo: $DSTACK_RELEASE_REPO"
+  log "release tag: $tag"
+
+  archive=$(download_release_asset "$tag")
+  extracted=$(extract_release_asset "$tag" "$archive")
+  bundle_dir=$(find_bundle_dir "$extracted")
+  install_base_artifacts "$tag" "$archive" "$bundle_dir"
 }
 
 main "$@"

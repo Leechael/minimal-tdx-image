@@ -7,7 +7,7 @@ payload runs as process ID 1 (PID 1).
 ## Files
 
 ```text
-build-base.sh                 build TDX OVMF and kernel from meta-dstack
+build-base.sh                 download TDX OVMF and kernel from dstack release
 build-image.sh                build a runnable image bundle
 build-initramfs.sh             build a payload initramfs
 run-qemu.sh                   boot the initramfs as a TDX guest
@@ -17,19 +17,22 @@ examples/quote-generator.sh   quote-generator payload example
 
 ## Base Artifacts
 
-`build-base.sh` builds the TDX firmware and kernel from:
+`build-base.sh` downloads the latest dstack release tarball from:
 
 ```text
 https://github.com/dstack-TEE/meta-dstack.git
 ```
 
-The default ref is `v0.5.9`. Set `META_DSTACK_REF` to pin another tag, branch,
-or commit:
+By default it resolves GitHub `latest` and downloads `dstack-<version>.tar.gz`.
+Set `DSTACK_RELEASE_TAG` to pin a release tag:
 
 ```bash
 cd minimal-tdx-image
-META_DSTACK_REF=v0.5.8 ./build-base.sh
+DSTACK_RELEASE_TAG=v0.5.9 ./build-base.sh
 ```
+
+Set `DSTACK_DIST` to download another published flavor, for example
+`dstack-dev`, `dstack-nvidia`, or `dstack-nvidia-dev`.
 
 The output is:
 
@@ -40,8 +43,9 @@ base/
   manifest.txt
 ```
 
-`manifest.txt` records the resolved meta-dstack commit and source artifact
-paths. The Yocto checkout and build directory live under `.work/` by default.
+`manifest.txt` records the resolved release tag and source artifact paths.
+Downloaded release archives are cached under `.downloads/`, and extracted
+archives live under `.work/`.
 
 ## Payload Contract
 
