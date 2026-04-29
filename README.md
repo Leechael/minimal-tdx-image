@@ -1,20 +1,47 @@
 # Minimal TDX Image
 
-This directory builds a small initramfs for QEMU tests that boot with Intel
-Trust Domain Extensions (TDX). It is only a payload runner: after minimal setup,
-`/init` replaces itself with the selected payload, so the payload runs as
-process ID 1 (PID 1).
+This directory builds a small payload-runner initramfs for QEMU TDX tests.
+After minimal setup, `/init` replaces itself with the selected payload, so the
+payload runs as process ID 1 (PID 1).
 
 ## Files
 
 ```text
-prepare-base.sh               import TDX firmware and kernel into base/
+build-base.sh                 build TDX OVMF and kernel from meta-dstack
 build-image.sh                build a runnable image bundle
 build-initramfs.sh             build a payload initramfs
 run-qemu.sh                   boot the initramfs as a TDX guest
 examples/hello.sh             minimal PID 1 payload
 examples/quote-generator.sh   quote-generator payload example
 ```
+
+## Base Artifacts
+
+`build-base.sh` builds the TDX firmware and kernel from:
+
+```text
+https://github.com/dstack-TEE/meta-dstack.git
+```
+
+The default ref is `v0.5.9`. Set `META_DSTACK_REF` to pin another tag, branch,
+or commit:
+
+```bash
+cd minimal-tdx-image
+META_DSTACK_REF=v0.5.8 ./build-base.sh
+```
+
+The output is:
+
+```text
+base/
+  ovmf.fd
+  bzImage
+  manifest.txt
+```
+
+`manifest.txt` records the resolved meta-dstack commit and source artifact
+paths. The Yocto checkout and build directory live under `.work/` by default.
 
 ## Payload Contract
 
@@ -40,6 +67,10 @@ cd minimal-tdx-image
 PAYLOAD_BIN=examples/hello.sh ./build-image.sh
 ```
 
+If `base/ovmf.fd` or `base/bzImage` is missing, `build-image.sh` runs
+`build-base.sh` first. For normal payload iteration, keep `base/` and rerun only
+`build-image.sh`.
+
 The output is:
 
 ```text
@@ -47,17 +78,6 @@ out/image/
   ovmf.fd
   bzImage
   initramfs.cpio.gz
-  manifest.txt
-```
-
-If `base/` does not exist, `build-image.sh` runs `prepare-base.sh`
-automatically. `prepare-base.sh` locates installed system artifacts such as
-`/usr/share/ovmf/OVMF.tdx.fd` and `/boot/vmlinuz-*`, then copies them into:
-
-```text
-base/
-  ovmf.fd
-  bzImage
   manifest.txt
 ```
 
