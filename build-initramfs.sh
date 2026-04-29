@@ -76,11 +76,22 @@ cmdline_value() {
 }
 
 mount_basic_fs() {
-  mkdir -p /proc /sys /dev /run /tmp /mnt/out /etc
+  mkdir -p /proc /sys /dev /run /tmp /mnt/out /mnt/in /etc
   mount -t proc proc /proc 2>/dev/null || true
   mount -t sysfs sysfs /sys 2>/dev/null || true
   mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
   mount -t tmpfs tmpfs /run 2>/dev/null || true
+}
+
+mount_input() {
+  IN_TAG=$(cmdline_value in_tag || printf '')
+  IN_DIR=$(cmdline_value in_dir || printf '/mnt/in')
+  export IN_TAG IN_DIR
+
+  mkdir -p "$IN_DIR"
+  if [ -n "$IN_TAG" ]; then
+    mount -t 9p -o trans=virtio,version=9p2000.L "$IN_TAG" "$IN_DIR" 2>/dev/null || true
+  fi
 }
 
 mount_output() {
@@ -95,6 +106,7 @@ mount_output() {
 }
 
 mount_basic_fs
+mount_input
 mount_output
 
 echo "MINIMAL_TDX init_begin uptime=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || printf 0)"
@@ -124,7 +136,7 @@ main() {
   install_file "$BUSYBOX_BIN" /bin/busybox 0755
   (
     cd "$BUILD_DIR/bin"
-    for applet in sh mount umount mkdir mknod ls cat echo printf sleep poweroff reboot sync stat sha256sum wc cut tr date uname grep sed env true false; do
+    for applet in sh mount umount mkdir mknod insmod modprobe ls cat echo printf sleep poweroff reboot sync stat sha256sum wc cut tr date uname grep sed env true false; do
       ln -sf busybox "$applet"
     done
   )

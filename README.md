@@ -37,6 +37,8 @@ build-initramfs.sh             build the payload initramfs
 run-qemu.sh                   boot the image bundle with QEMU TDX
 examples/hello.sh             minimal payload example
 examples/quote-generator.sh   quote-generator payload example
+examples/run-quote-generator.sh
+                              host-side quote-generator example workflow
 ```
 
 ## Build Base Artifacts
@@ -71,12 +73,14 @@ The base output is:
 base/
   ovmf.fd
   bzImage
+  tdx-guest.ko
   metadata.json
   manifest.txt
 ```
 
 Archives are cached under `.downloads/`, and extracted release contents live
-under `.work/`.
+under `.work/`. `tdx-guest.ko` is extracted from the dstack release rootfs when
+`unsquashfs` is available.
 
 ## Build A Payload Image
 
@@ -122,6 +126,13 @@ The guest writes shared output to:
 runs/<timestamp>/out/
 ```
 
+Set `IN_SHARE_DIR` to mount a read-only host directory into the guest at
+`/mnt/in`:
+
+```bash
+IN_SHARE_DIR=/path/to/input ./run-qemu.sh
+```
+
 Boot timing markers are written to:
 
 ```text
@@ -158,11 +169,29 @@ EXTRA_FILES="/path/to/quote-generator/tdx/tdx-quote-generator-linux:/payload/tdx
 ./build-image.sh
 ```
 
+Alternatively, keep the quote generator outside the initramfs and mount its
+directory into the guest:
+
+```bash
+QUOTE_GENERATOR_BIN=/path/to/quote-generator/tdx/tdx-quote-generator-linux \
+./examples/run-quote-generator.sh
+```
+
+This example builds the quote payload image, mounts the quote-generator binary's
+host directory at `/mnt/in`, runs QEMU with QGS enabled, and asks the generator
+to print both `ppid=` and `device_id=`.
+
+The quote example needs `base/tdx-guest.ko`. Install `unsquashfs`
+(`squashfs-tools` on many Linux distributions) before running `build-base.sh`
+if that file is missing.
+
 Run with QGS enabled:
 
 ```bash
 ENABLE_QGS=1 \
 QGS_PORT=4050 \
+IN_SHARE_DIR=/path/to/quote-generator/tdx \
+KERNEL_APPEND="device_id_report_data=1 quote_generator=/mnt/in/tdx-quote-generator-linux" \
 GUEST_CID=7797 \
 VM_MEMORY=512M \
 ./run-qemu.sh
@@ -172,6 +201,7 @@ Expected output:
 
 ```text
 runs/<timestamp>/out/quote.bin
+runs/<timestamp>/out/quote-generator.log
 ```
 
 Custom report data:

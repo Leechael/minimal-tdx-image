@@ -16,6 +16,8 @@ VM_MEMORY=${VM_MEMORY:-512M}
 VM_CPUS=${VM_CPUS:-1}
 TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-120}
 MOUNT_OUT=${MOUNT_OUT:-1}
+MOUNT_IN=${MOUNT_IN:-0}
+IN_SHARE_DIR=${IN_SHARE_DIR:-}
 KERNEL_APPEND=${KERNEL_APPEND:-}
 
 RUN_ID=${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
@@ -84,6 +86,14 @@ main() {
   mkdir -p "$WORK_DIR" "$OUT_SHARE_DIR"
   : > "$WORK_DIR/profile.log"
 
+  if [ -n "$IN_SHARE_DIR" ]; then
+    MOUNT_IN=1
+  fi
+  if [ "$MOUNT_IN" = 1 ]; then
+    [ -n "$IN_SHARE_DIR" ] || die "set IN_SHARE_DIR=/host/input/dir or disable MOUNT_IN"
+    [ -d "$IN_SHARE_DIR" ] || die "input share directory not found: $IN_SHARE_DIR"
+  fi
+
   PROFILE_START=$(now_ns)
   export PROFILE_START
 
@@ -103,6 +113,9 @@ main() {
   fi
 
   append="console=ttyS0 init=/init panic=1 random.trust_cpu=y random.trust_bootloader=n tsc=reliable no-kvmclock out_tag=out out_dir=/mnt/out"
+  if [ "$MOUNT_IN" = 1 ]; then
+    append="$append in_tag=in in_dir=/mnt/in"
+  fi
   if [ "$ENABLE_QGS" = 1 ]; then
     append="$append qgs_port=$QGS_PORT"
   fi
@@ -131,6 +144,9 @@ main() {
 
   if [ "$MOUNT_OUT" = 1 ]; then
     qemu_args+=(-virtfs "local,path=$OUT_SHARE_DIR,mount_tag=out,readonly=off,security_model=mapped,id=out")
+  fi
+  if [ "$MOUNT_IN" = 1 ]; then
+    qemu_args+=(-virtfs "local,path=$IN_SHARE_DIR,mount_tag=in,readonly=on,security_model=mapped,id=in")
   fi
 
   profile "qemu_start"

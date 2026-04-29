@@ -28,11 +28,16 @@ prepare_base_if_needed() {
 }
 
 main() {
+  local initramfs_extra_files=${EXTRA_FILES:-}
+
   [ -n "${PAYLOAD_BIN:-}" ] || die "set PAYLOAD_BIN=/path/to/payload"
   prepare_base_if_needed
 
   require_file "$BASE_IMAGE_DIR/ovmf.fd"
   require_file "$BASE_IMAGE_DIR/bzImage"
+  if [ -f "$BASE_IMAGE_DIR/tdx-guest.ko" ]; then
+    initramfs_extra_files="$initramfs_extra_files $BASE_IMAGE_DIR/tdx-guest.ko:/lib/modules/tdx-guest.ko"
+  fi
 
   rm -rf "$IMAGE_OUT"
   mkdir -p "$IMAGE_OUT"
@@ -46,7 +51,7 @@ main() {
   cp "$BASE_IMAGE_DIR/ovmf.fd" "$IMAGE_OUT/ovmf.fd"
   cp "$BASE_IMAGE_DIR/bzImage" "$IMAGE_OUT/bzImage"
 
-  INITRAMFS="$IMAGE_OUT/initramfs.cpio.gz" "$BASE_DIR/build-initramfs.sh"
+  EXTRA_FILES="$initramfs_extra_files" INITRAMFS="$IMAGE_OUT/initramfs.cpio.gz" "$BASE_DIR/build-initramfs.sh"
 
   {
     printf 'ovmf=ovmf.fd\n'

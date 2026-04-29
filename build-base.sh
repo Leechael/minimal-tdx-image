@@ -88,6 +88,7 @@ install_base_artifacts() {
   local archive=$2
   local bundle_dir=$3
   local metadata="$bundle_dir/metadata.json"
+  local module_path
 
   require_file "$bundle_dir/ovmf.fd"
   require_file "$bundle_dir/bzImage"
@@ -100,6 +101,7 @@ install_base_artifacts() {
   if [ -f "$metadata" ]; then
     cp "$metadata" "$BASE_IMAGE_DIR/metadata.json"
   fi
+  module_path=$(install_tdx_guest_module "$bundle_dir" || true)
 
   {
     printf 'ovmf=ovmf.fd\n'
@@ -112,10 +114,36 @@ install_base_artifacts() {
     printf 'source_dir=%s\n' "$bundle_dir"
     printf 'source_ovmf=%s\n' "$bundle_dir/ovmf.fd"
     printf 'source_kernel=%s\n' "$bundle_dir/bzImage"
+    if [ -n "$module_path" ]; then
+      printf 'tdx_guest_module=tdx-guest.ko\n'
+      printf 'source_tdx_guest_module=%s\n' "$module_path"
+    fi
   } > "$BASE_IMAGE_DIR/manifest.txt"
 
   log "base image dir: $BASE_IMAGE_DIR"
   ls -lh "$BASE_IMAGE_DIR"
+}
+
+install_tdx_guest_module() {
+  local bundle_dir=$1
+  local rootfs="$bundle_dir/rootfs.img.verity"
+  local module_extract_dir="$EXTRACT_DIR/tdx-guest-module"
+  local module_path
+
+  [ -f "$rootfs" ] || return 0
+  if ! command -v unsquashfs >/dev/null 2>&1; then
+    log "unsquashfs not found; skipping tdx-guest.ko extraction"
+    return 0
+  fi
+
+  rm -rf "$module_extract_dir"
+  mkdir -p "$module_extract_dir"
+  unsquashfs -f -d "$module_extract_dir" "$rootfs" 'usr/lib/modules/*/updates/tdx-guest.ko' >/dev/null
+  module_path=$(find "$module_extract_dir" -type f -name tdx-guest.ko | sort | head -n 1)
+  [ -n "$module_path" ] || return 0
+
+  cp "$module_path" "$BASE_IMAGE_DIR/tdx-guest.ko"
+  printf '%s\n' "$module_path"
 }
 
 main() {
