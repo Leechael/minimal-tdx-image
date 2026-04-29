@@ -21,14 +21,51 @@ require_file() {
   [ -f "$1" ] || die "missing file: $1"
 }
 
+pick_first_existing() {
+  local path
+  for path in "$@"; do
+    if [ -f "$path" ]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+find_ovmf() {
+  pick_first_existing \
+    /usr/share/ovmf/OVMF.tdx.fd \
+    /usr/share/qemu/OVMF.fd \
+    /usr/share/ovmf/OVMF.fd
+}
+
+find_kernel() {
+  local kernel
+  kernel=$(find /boot -maxdepth 1 -type f -name 'vmlinuz-*-intel' 2>/dev/null | sort -V | tail -n 1)
+  if [ -n "$kernel" ]; then
+    printf '%s\n' "$kernel"
+    return 0
+  fi
+
+  kernel=$(find /boot -maxdepth 1 -type f -name 'vmlinuz-*' 2>/dev/null | sort -V | tail -n 1)
+  if [ -n "$kernel" ]; then
+    printf '%s\n' "$kernel"
+    return 0
+  fi
+  return 1
+}
+
 main() {
   if [ -n "$SOURCE_IMAGE_DIR" ]; then
     OVMF_FD=${OVMF_FD:-"$SOURCE_IMAGE_DIR/ovmf.fd"}
     KERNEL_IMAGE=${KERNEL_IMAGE:-"$SOURCE_IMAGE_DIR/bzImage"}
   fi
 
-  [ -n "$OVMF_FD" ] || die "set OVMF_FD=/path/to/ovmf.fd or SOURCE_IMAGE_DIR=/dir"
-  [ -n "$KERNEL_IMAGE" ] || die "set KERNEL_IMAGE=/path/to/bzImage or SOURCE_IMAGE_DIR=/dir"
+  OVMF_FD=${OVMF_FD:-$(find_ovmf || true)}
+  KERNEL_IMAGE=${KERNEL_IMAGE:-$(find_kernel || true)}
+
+  [ -n "$OVMF_FD" ] || die "TDX OVMF not found; install an OVMF package or set OVMF_FD=/path/to/ovmf.fd"
+  [ -n "$KERNEL_IMAGE" ] || die "Linux kernel image not found; install a kernel package or set KERNEL_IMAGE=/path/to/bzImage"
   require_file "$OVMF_FD"
   require_file "$KERNEL_IMAGE"
 

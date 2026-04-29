@@ -22,6 +22,14 @@ require_file() {
   [ -f "$1" ] || die "missing file: $1"
 }
 
+prepare_base_if_needed() {
+  if [ -f "$BASE_IMAGE_DIR/ovmf.fd" ] && [ -f "$BASE_IMAGE_DIR/bzImage" ]; then
+    return 0
+  fi
+  log "base artifacts not found; running prepare-base.sh"
+  BASE_IMAGE_DIR="$BASE_IMAGE_DIR" "$BASE_DIR/prepare-base.sh"
+}
+
 main() {
   if [ -n "$SOURCE_IMAGE_DIR" ]; then
     OVMF_FD=${OVMF_FD:-"$SOURCE_IMAGE_DIR/ovmf.fd"}
@@ -32,8 +40,14 @@ main() {
   fi
 
   [ -n "${PAYLOAD_BIN:-}" ] || die "set PAYLOAD_BIN=/path/to/payload"
-  [ -n "$OVMF_FD" ] || die "missing ovmf.fd; run ./prepare-base.sh first"
-  [ -n "$KERNEL_IMAGE" ] || die "missing bzImage; run ./prepare-base.sh first"
+  if [ -z "$OVMF_FD" ] || [ -z "$KERNEL_IMAGE" ]; then
+    prepare_base_if_needed
+    OVMF_FD=${OVMF_FD:-"$BASE_IMAGE_DIR/ovmf.fd"}
+    KERNEL_IMAGE=${KERNEL_IMAGE:-"$BASE_IMAGE_DIR/bzImage"}
+  fi
+
+  [ -n "$OVMF_FD" ] || die "missing ovmf.fd"
+  [ -n "$KERNEL_IMAGE" ] || die "missing bzImage"
   require_file "$OVMF_FD"
   require_file "$KERNEL_IMAGE"
 

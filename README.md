@@ -33,31 +33,6 @@ sync
 poweroff -f 2>/dev/null || reboot -f 2>/dev/null || exit 0
 ```
 
-## Prepare The Base
-
-Import the TDX-capable OVMF firmware and Linux kernel once:
-
-```bash
-cd minimal-tdx-image
-SOURCE_IMAGE_DIR=/path/to/base-image-dir ./prepare-base.sh
-```
-
-The source directory must contain:
-
-```text
-ovmf.fd
-bzImage
-```
-
-The imported files are written to:
-
-```text
-base/
-  ovmf.fd
-  bzImage
-  manifest.txt
-```
-
 ## Build A Minimal Image
 
 ```bash
@@ -72,6 +47,17 @@ out/image/
   ovmf.fd
   bzImage
   initramfs.cpio.gz
+  manifest.txt
+```
+
+If `base/` does not exist, `build-image.sh` runs `prepare-base.sh`
+automatically. `prepare-base.sh` locates installed system artifacts such as
+`/usr/share/ovmf/OVMF.tdx.fd` and `/boot/vmlinuz-*`, then copies them into:
+
+```text
+base/
+  ovmf.fd
+  bzImage
   manifest.txt
 ```
 
