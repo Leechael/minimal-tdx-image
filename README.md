@@ -149,6 +149,16 @@ runs/<timestamp>/host-info.log
 `kvm_intel` TDX parameters, QGS status/version, related package versions, and
 the dstack release metadata used by the image when available.
 
+Payloads also emit machine-readable `SUMMARY` lines on serial. These are stable
+markers for comparing guest workload completion with host-side VM exit:
+
+```text
+SUMMARY workload_start_...
+SUMMARY workload_done_...
+SUMMARY guest_result=ok|fail
+SUMMARY poweroff_start_...
+```
+
 To compare QEMU versions, keep the image and VM parameters fixed and change only
 `QEMU_BIN`:
 
@@ -232,6 +242,8 @@ quote_generator_done
 quote_size_reported
 quote_done
 quote_example_end
+guest_poweroff_start
+guest_result
 ```
 
 Custom report data:
@@ -315,6 +327,8 @@ memfill_write_end
 memfill_result
 memfill_end
 memfill_poweroff_begin
+guest_poweroff_start
+guest_result
 qemu_exit
 ```
 

@@ -56,6 +56,8 @@ static void mark(const char *name) {
 
 static void die_errno(const char *msg) {
   emit("MEM_FILL_ERROR message=%s errno=%d detail=%s", msg, errno, strerror(errno));
+  emit("SUMMARY guest_result=fail rc=1");
+  emit("SUMMARY poweroff_start_s=%.3f", monotonic_seconds());
   sync();
 #ifdef __linux__
   reboot(RB_POWER_OFF);
@@ -179,14 +181,16 @@ static uint64_t compute_target_bytes(uint64_t page_size) {
   return round_down(target, page_size);
 }
 
-static void poweroff_now(void) {
+static void poweroff_now(int rc) {
+  emit("SUMMARY guest_result=%s rc=%d", rc == 0 ? "ok" : "fail", rc);
+  emit("SUMMARY poweroff_start_s=%.3f", monotonic_seconds());
   mark("POWEROFF_BEGIN");
   sync();
 #ifdef __linux__
   reboot(RB_POWER_OFF);
   reboot(RB_AUTOBOOT);
 #endif
-  _exit(0);
+  _exit(rc);
 }
 
 int main(void) {
@@ -210,6 +214,7 @@ int main(void) {
   uint64_t target = compute_target_bytes(page_size);
 
   mark("BEGIN");
+  emit("SUMMARY workload_start_s=%.3f", monotonic_seconds());
   emit("MEM_FILL_CONFIG mode=%s target_bytes=%" PRIu64 " target_mb=%" PRIu64
        " page_size=%" PRIu64 " memtotal_kb=%" PRIu64 " memavailable_kb=%" PRIu64
        " seed=%" PRIu64,
@@ -218,7 +223,7 @@ int main(void) {
 
   if (target == 0) {
     emit("MEM_FILL_ERROR message=target_bytes_zero");
-    poweroff_now();
+    poweroff_now(1);
   }
 
   mark("ALLOC_BEGIN");
@@ -293,5 +298,6 @@ int main(void) {
   }
 
   mark("END");
-  poweroff_now();
+  emit("SUMMARY workload_done_s=%.3f", monotonic_seconds());
+  poweroff_now(0);
 }

@@ -17,6 +17,12 @@ cmdline_value() {
 
 finish() {
   rc=$1
+  if [ "$rc" -eq 0 ]; then
+    echo "SUMMARY guest_result=ok"
+  else
+    echo "SUMMARY guest_result=fail rc=$rc"
+  fi
+  echo "SUMMARY poweroff_start_uptime=$(uptime_now)"
   sync
   poweroff -f 2>/dev/null || reboot -f 2>/dev/null || exit "$rc"
 }
@@ -31,6 +37,7 @@ mark() {
 
 mkdir -p "$OUT_DIR"
 mark BEGIN
+echo "SUMMARY workload_start_uptime=$(uptime_now)"
 
 if [ ! -e /dev/tdx_guest ] && [ -f /lib/modules/tdx-guest.ko ]; then
   mark LOAD_TDX_GUEST_MODULE_BEGIN
@@ -90,6 +97,7 @@ QUOTE_LOG="$OUT_DIR/quote-generator.log"
 echo "quote_begin"
 echo "quote_generator=$QUOTE_GENERATOR"
 mark GENERATOR_START
+echo "SUMMARY quote_start_uptime=$(uptime_now)"
 if [ "$DEVICE_ID_REPORT_DATA" = 1 ]; then
   "$QUOTE_GENERATOR" -qgs-port "$QGS_PORT" -device-id-report-data -print-ppid -print-device-id -o "$OUT_DIR/quote.bin" > "$QUOTE_LOG" 2>&1 || {
     rc=$?
@@ -113,9 +121,11 @@ else
   }
 fi
 mark GENERATOR_DONE
+echo "SUMMARY quote_done_uptime=$(uptime_now)"
 cat "$QUOTE_LOG" 2>/dev/null || true
 stat -c 'quote_size=%s' "$OUT_DIR/quote.bin" 2>/dev/null || true
 sha256sum "$OUT_DIR/quote.bin" 2>/dev/null | sed 's/^/quote_sha256=/' || true
 echo "quote_done"
 mark END
+echo "SUMMARY workload_done_uptime=$(uptime_now)"
 finish 0

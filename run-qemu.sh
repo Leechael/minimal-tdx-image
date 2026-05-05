@@ -206,11 +206,13 @@ scan_serial_markers() {
   profile_once memfill_result '^MEM_FILL_RESULT' memfill_result
   profile_once memfill_end 'MEM_FILL_END' memfill_end
   profile_once memfill_poweroff_begin 'MEM_FILL_POWEROFF_BEGIN' memfill_poweroff_begin
+  profile_once summary_poweroff '^SUMMARY poweroff_start' guest_poweroff_start
+  profile_once summary_result '^SUMMARY guest_result=' guest_result
 }
 
 print_run_artifacts() {
   log "serial markers:"
-  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_' "$WORK_DIR/serial.log" || true
+  grep -E 'MINIMAL_TDX|TDX_QUOTE_EXAMPLE|^quote_|^ppid=|^device_id=|MEM_FILL_|^SUMMARY ' "$WORK_DIR/serial.log" || true
   log "output share: $OUT_SHARE_DIR"
   log "host info: $WORK_DIR/host-info.log"
   log "profile: $WORK_DIR/profile.log"
@@ -325,6 +327,7 @@ main() {
   local quote_size quote_done quote_end
   local memfill_begin memfill_alloc_begin memfill_alloc_end memfill_write_begin
   local memfill_write_end memfill_result memfill_end memfill_poweroff_begin
+  local summary_poweroff summary_result
   local memfill_progress_seen
   wait_start=$(date +%s)
   first_serial=0
@@ -352,6 +355,8 @@ main() {
   memfill_result=0
   memfill_end=0
   memfill_poweroff_begin=0
+  summary_poweroff=0
+  summary_result=0
   memfill_progress_seen=""
 
   while is_pid_alive "$pid"; do
